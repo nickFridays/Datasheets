@@ -137,7 +137,7 @@ def main():
     configs=[(CH_[0],GAIN_2,  CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN),
              (CH_[2],GAIN_128,CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN)]
     configs2=[(CH_[2],GAIN_2,CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN)]
-    if not isoadc6.config_setup(configs2):
+    if not isoadc6.config_setup(configs):
         print("Configuration setup failed.")
         return
     # Calibration calculation for a specific AVDD
