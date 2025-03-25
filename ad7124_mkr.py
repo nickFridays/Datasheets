@@ -1,4 +1,4 @@
-# Mikroe ISO ADC 6
+# Mikroe ISO ADC 6 with Debug Information
 import spidev
 import time
 
@@ -23,19 +23,20 @@ CFG_BUFF_ON_AINP_EN = 0x0040
 CFG_BUFF_ON_AINM_EN = 0x0020
 CH_ENABLE = 0x8000
 CH_NEG_AN_IN_AIN1 = 0x0001
+CH_NEG_AN_IN_AGND = 0x0000  # Assuming AGND is the common ground
 VTG_REF_2_65_V = 2.65
 CALIB_DEFAULT = 1.245  # Updated calibration factor
 GAIN_COEFF = 0x00400000
 # Channels A0 - A15
-CH_ = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+CH_ = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 # Gain settings
-GAIN_1   = 0x00
-GAIN_2   = 0x01
-GAIN_4   = 0x02
-GAIN_8   = 0x03
-GAIN_16  = 0x04
-GAIN_32  = 0x05
-GAIN_64  = 0x06
+GAIN_1 = 0x00
+GAIN_2 = 0x01
+GAIN_4 = 0x02
+GAIN_8 = 0x03
+GAIN_16 = 0x04
+GAIN_32 = 0x05
+GAIN_64 = 0x06
 GAIN_128 = 0x07
 
 class ISOADC6:
@@ -48,20 +49,24 @@ class ISOADC6:
         self.calib = CALIB_DEFAULT
 
     def spi_write(self, reg, data):
+        print(f"SPI Write to Reg {reg}: Data={data}")
         self.spi.xfer2([reg] + data)
         time.sleep(0.00001)
 
     def spi_read(self, reg, length):
-        return self.spi.xfer2([reg | CMD_SPI_READ] + [0x00] * length)[1:]
+        response = self.spi.xfer2([reg | CMD_SPI_READ] + [0x00] * length)[1:]
+        print(f"SPI Read from Reg {reg}: Response={response}")
+        return response
 
     def reset(self):
+        print("Resetting ADC...")
         # Send 64 consecutive 1s to reset the ADC
         self.spi.xfer2([0xFF] * 8)
         time.sleep(0.1)  # Wait for the reset to complete
 
     def check_data_ready(self):
         status = self.spi_read(REG_COMM_STATUS, 1)[0]
-        #print(f"Status Register: {status:08b}")
+        print(f"Status Register: {status:08b}")
         return (status & NEW_DATA_BIT_MASK) == 0
 
     def get_device_id(self):
@@ -110,19 +115,20 @@ class ISOADC6:
             time.sleep(0.01)
         data = self.spi_read(REG_DATA, 3)
         adc_data = (data[0] << 16) | (data[1] << 8) | data[2]
-        #print(f"ADC Data: {adc_data}")
+        print(f"ADC Data: {adc_data}")
         return adc_data
 
-    def get_voltage(self):
+    def get_voltage(self, channel):
+        self.set_ch(channel, CH_ENABLE | CH_NEG_AN_IN_AIN1)
         adc_data = self.get_adc_data()
         voltage = self.calib * self.vref * adc_data / GAIN_COEFF
         return voltage
 
-    def get_voltage_mv(self):
-        return  self.get_voltage() * 1000
+    def get_voltage_mv(self, channel):
+        return self.get_voltage(channel) * 1000
 
-    def get_average_voltage(self, num_samples=10):
-        voltages = [self.get_voltage() for _ in range(num_samples)]
+    def get_average_voltage(self, channel, num_samples=10):
+        voltages = [self.get_voltage(channel) for _ in range(num_samples)]
         avg_voltage = sum(voltages) / num_samples
         return avg_voltage
 
@@ -131,26 +137,46 @@ class ISOADC6:
         self.calib = avdd / self.vref
         return self.calib
 
+    def read_ch_config(self, sel_ch):
+        if sel_ch <= 15:
+            config = self.spi_read(REG_IO_CTRL_1 + sel_ch, 2)
+            config_value = (config[0] << 8) | config[1]
+            print(f"Read back config for channel {sel_ch}: {config_value:016b}")
+            return config_value
+
+    def set_mode(self, channel, mode):
+        if mode == "differential":
+            self.set_ch(channel, CH_ENABLE | CH_NEG_AN_IN_AIN1)
+            print(f"Channel {channel} set to differential mode.")
+        elif mode == "common":
+            self.set_ch(channel, CH_ENABLE | CH_NEG_AN_IN_AGND)
+            print(f"Channel {channel} set to common mode.")
+        else:
+            print("Invalid mode. Use 'differential' or 'common'.")
+
 def main():
     isoadc6 = ISOADC6()
-    # Configure Channel 0 for 500 mV and Channel 1 for 50 mV
-    configs=[(CH_[0],GAIN_2,  CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN),
-             (CH_[2],GAIN_128,CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN)]
-    configs2=[(CH_[2],GAIN_2,CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN)]
+    # Configure Channel 2 for 50 mV in common mode
+    configs = [
+        # Only configure CH_2
+        (CH_[2], GAIN_128, CFG_BIP_OP_EN | CFG_BUFF_ON_AINP_EN | CFG_BUFF_ON_AINM_EN)
+    ]
     if not isoadc6.config_setup(configs):
         print("Configuration setup failed.")
         return
     # Calibration calculation for a specific AVDD
     isoadc6.get_cal_vtg(3.3)  # Update the calibration factor based on AVDD of 3.3V
 
-    while True:
-        # Measure voltage on Channel 0
-        voltage_mv_ch0 = isoadc6.get_voltage_mv()
-        print(f"*** on CH_0:   {voltage_mv_ch0:.3f} [mV]")
+    # Set mode for CH_2
+    isoadc6.set_mode(CH_[2], "common")
 
-        # Measure voltage on Channel 1
-        avg_voltage_ch1 = isoadc6.get_average_voltage()
-        print(f"^^^ on CH 1:   {avg_voltage_ch1:.3f} [V]")
+    for _ in range(20):
+        # Read back configuration for Channel 2
+        isoadc6.read_ch_config(CH_[2])
+
+        # Measure voltage on Channel 2
+        voltage_ch2 = isoadc6.get_voltage(CH_[2])
+        print(f"^^^ on CH 2:   {voltage_ch2:.3f} [V]")
 
         time.sleep(1)
 
