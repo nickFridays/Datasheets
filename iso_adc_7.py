@@ -1,4 +1,6 @@
 
+# This code reads adc data from Texas Instrument AMC130M03
+
 import gpiod
 from gpiod.line import Direction,Value,Bias  # "Value", "Direction", "Bias", "Drive", "Edge", "Clock"
 import gpiod.line as line 
