@@ -140,6 +140,9 @@ class AMC130M03:
         self.spi.xfer2(txdata)
 
 
+
+# Usage 
+
 iso7 = AMC130M03()
 # Data ready pin
 print("DRDY should be 1: " + str(gpio_d.read_input(26)))
