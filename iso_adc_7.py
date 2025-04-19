@@ -1,10 +1,9 @@
+
 import gpiod
 from gpiod.line import Direction,Value,Bias  # "Value", "Direction", "Bias", "Drive", "Edge", "Clock"
 import gpiod.line as line 
 import time
 import spidev
-from array import array
-
 
 class GPIOD:
     def __init__(self,pi_chip=0):
@@ -60,30 +59,40 @@ class GPIOD:
         return Value.ACTIVE if value else Value.INACTIVE
 
 
+
+gpio_d = GPIOD()
+gpio_d.config_outputs([17],[0])   # Reset pin sync_reset = 22
+gpio_d.config_inputs([26],[Bias.AS_IS])  # config_inputs([13],[Bias.PULL_DOWN])
+
+# The imports
+import spidev
+import time
+from array import array
+
 class AMC130M03:
-    def __init__(self, spi_bus=0, spi_device=1,spi_mode=0):
+    def __init__(self, spi_bus=0, spi_device=1,spi_mode=1):
         self.spi = spidev.SpiDev()
         self.spi.open(spi_bus, spi_device)  # Use SPI0
         self.spi.max_speed_hz = 100000
-        self.spi.mode = spi_mode  # SPI mode 1
+        self.spi.mode = spi_mode  # SPI mode 
         self.reset()
 
-    def reset(self,rst_gpio=22):
+    def reset(self,rst_gpio=17):
         # Trigger a reset
         time.sleep(0.001)
-        gpio_d.set_outputs([rst_gpio,0])
+        gpio_d.set_outputs([rst_gpio],[0])
         time.sleep(0.001)
-        gpio_d.set_outputs([rst_gpio,0])
+        gpio_d.set_outputs([rst_gpio],[1])
         time.sleep(0.001)
 
     # Helper functions for binary formatting
-    def bin_8(in_val):
+    def bin_8(self,in_val):
         # Format the 8-bit binary
         return f"0b{(in_val >> 7) & 0x1}{(in_val >> 6) & 0x1}{(in_val >> 5) & 0x1}" \
             f"{(in_val >> 4) & 0x1}{(in_val >> 3) & 0x1}{(in_val >> 2) & 0x1}" \
             f"{(in_val >> 1) & 0x1}{(in_val >> 0) & 0x1}"
 
-    def bin_16(in_val):
+    def bin_16(self,in_val):
         # Format the 16-bit binary value, with a little space for ease of reading
         out_str = "0b"
         for ii in range(15, 7, -1):
@@ -94,7 +103,7 @@ class AMC130M03:
         return out_str
 
     def read_AMC130M03(self ):
-        '''This function will read the ADC values.'''
+        #This function will read the ADC values.
         # Read register
         # At reset, default is 24-bit words, 16-bit value plus one byte of 0s. figured out 
         txdata = [0] * 15
@@ -105,7 +114,7 @@ class AMC130M03:
         return raw_adc
 
     def read_reg_AMC130M03(self, reg_addr):
-        '''Reads a register'''
+        #Reads a register
         # reg_addr - expect an address from 0 to 63
         # Checks on the input address
         assert 0 <= reg_addr <= 63
@@ -118,7 +127,7 @@ class AMC130M03:
         return (rxdata2[0] << 8) | rxdata2[1]
 
     def write_reg_AMC130M03(self, reg_addr, reg_value):
-        '''Write a register'''
+        #Write a register
         # reg_addr - expect an address from 0 to 63
         # reg_value - the new value, expect 16-bit
         # Checks on the input address
@@ -129,15 +138,9 @@ class AMC130M03:
         self.spi.xfer2(txdata)
 
 
-
-
-gpio_d = GPIOD()
-gpio_d.config_outputs([20,22],[0,0])   # Reset pin sync_reset = 22
-gpio_d.config_inputs([21],[Bias.AS_IS])  # config_inputs([13],[Bias.PULL_DOWN])
-
 iso7 = AMC130M03()
 # Data ready pin
-print("DRDY should be 1: " + str(gpio_d.read_input(21)))
+print("DRDY should be 1: " + str(gpio_d.read_input(26)))
 
 # Read the ID - don't be surprised if it is different than what is reported in the datasheet
 id_reg = iso7.read_reg_AMC130M03(0x0)
@@ -155,7 +158,7 @@ print("DCDC_CTRL_REG " + iso7.bin_16(DCDC_ctrl_reg))
 time.sleep(0.001)
 
 # Grab some samples
-NUM_SAMPLES = 64
+NUM_SAMPLES = 10
 wave0 = array("I", [0] * NUM_SAMPLES)
 wave1 = array("I", [0] * NUM_SAMPLES)
 
@@ -178,3 +181,4 @@ for i in range(NUM_SAMPLES):
     temp1 = temp1 / 32768.0 * 1.2
 
     print(f"{temp0}, {temp1}")
+
